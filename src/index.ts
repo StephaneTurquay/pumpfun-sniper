@@ -45,6 +45,23 @@ const isGeyser = process.env.IS_GEYSER === 'true';
 
 const init = async (rpcEndPoint: string, payer: string, solIn: number, devAddr: string) => {
     try {
+
+        // Define the allowed operating hours (24-hour format)
+        const START_HOUR = parseInt(process.env.START_HOUR || "8"); // Default: 8 AM
+        const END_HOUR = parseInt(process.env.END_HOUR || "20");   // Default: 8 PM
+
+        // Function to check if the current time is within the allowed range
+        const isWithinOperatingHours = () => {
+            const currentHour = new Date().getHours();
+            return currentHour >= START_HOUR && currentHour < END_HOUR;
+        };
+
+        // Wait until the bot is within operating hours
+        while (!isWithinOperatingHours()) {
+            console.log(`⏰ Outside operating hours (${START_HOUR}:00 - ${END_HOUR}:00). Waiting...`);
+            await new Promise(resolve => setTimeout(resolve, 60000)); // Check every minute
+        }
+
         const payerKeypair = Keypair.fromSecretKey(base58.decode(payer));
         let isBuying = false;
 
