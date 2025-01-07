@@ -23,8 +23,13 @@ console.log("🚀 Private Key:", `${payer?.slice(0, 6)}...`)
 
 const isDevMode = process.env.DEV_MODE === 'true';
 const devwallet = process.env.DEV_WALLET_ADDRESS;
+// Validation for devwallet
 if (isDevMode) {
-    console.log("🚀 Dev Wallet:", devwallet)
+    if (!devwallet) {
+        console.error("🚨 Error: DEV_WALLET_ADDRESS is not defined in environment variables!");
+        process.exit(1); // Exit the script if devwallet is not provided
+    }
+    console.log("🚀 Dev Wallet:", devwallet);
 }
 
 const isTickerMode = process.env.TICKER_MODE === 'true';
@@ -42,73 +47,89 @@ const init = async (rpcEndPoint: string, payer: string, solIn: number, devAddr: 
     try {
         const payerKeypair = Keypair.fromSecretKey(base58.decode(payer));
         let isBuying = false;
+
         const connection = new Connection(rpcEndPoint, { wsEndpoint: convertHttpToWebSocket(rpcEndPoint), commitment: "confirmed" });
         const logConnection = new Connection(rpcEndPoint, { wsEndpoint: convertHttpToWebSocket(rpcEndPoint), commitment: "processed" });
-        let globalLogListener: any;
 
-        // Function to stop the listener
-        const stopListener = async () => {
-            if (globalLogListener !== undefined) {
-                try {
-                    await logConnection.removeOnLogsListener(globalLogListener);
-                    isBuying = true
-                } catch (err) {
-                    console.log("Error stopping listener:", err);
-                }
-            }
-        };
+        console.log('--------------- Bot is Running Now ---------------');
 
-        console.log('--------------- Bot is Runnig Now ---------------')
-
-        globalLogListener = logConnection.onLogs(
+        const globalLogListener = logConnection.onLogs(
             PUMP_FUN_PROGRAM,
             async ({ logs, err, signature }) => {
-                if (err) return
+                if (err) return;
+                
                 const isMint = logs.filter(log => log.includes("MintTo")).length;
                 if (isMint && !isBuying) {
+                    isBuying = true; // Prevent multiple buy attempts
+                    //console.log('MintTo log detected, processing transaction...');
+
                     const parsedTransaction = await logConnection.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
                     if (!parsedTransaction) {
+                        console.log('Failed to parse transaction.');
+                        isBuying = false; // Reset the flag
                         return;
                     }
-                    console.log("New signature => ", `https://solscan.io/tx/${signature}`, await formatDate());
-                    let dev = parsedTransaction?.transaction.message.accountKeys[0].pubkey.toString();
+
+                    const dev = parsedTransaction?.transaction.message.accountKeys[0].pubkey.toString();
                     const mint = parsedTransaction?.transaction.message.accountKeys[1].pubkey;
-                    if (isDevMode) {
-                        console.log("Dev wallet => ", `https://solscan.io/address/${dev}`);
+
+                    if (isDevMode && dev !== devAddr) {
+                        console.log(`❌ ${dev}` );
+                        isBuying = false; // Reset the flag
+                        return;
                     }
-                    if (isDevMode && dev !== devAddr) return;
+                    else {
+                        console.log(`✅ ${dev}` );
+                    }
 
                     if (isTickerMode) {
-                        if (!tokenTicker) return console.log("Token Ticker is not defiend!");
+                        if (!tokenTicker) {
+                            console.log('Token Ticker is not defined!');
+                            isBuying = false; // Reset the flag
+                            return;
+                        }
                         const tokenInfo = await getTokenMetadata(mint.toString(), connection);
-                        if (!tokenInfo) return;
-                        const isTarget = tokenInfo.symbol.toUpperCase().includes(tokenTicker.toUpperCase())
-                        if (!isTarget) return
-                        console.log(`Found $${tokenInfo.symbol} token.`)
+                        if (!tokenInfo) {
+                            console.log('Failed to fetch token metadata.');
+                            isBuying = false; // Reset the flag
+                            return;
+                        }
+                        const isTarget = tokenInfo.symbol.toUpperCase().includes(tokenTicker.toUpperCase());
+                        if (!isTarget) {
+                            console.log(`Token ${tokenInfo.symbol} does not match the ticker.`);
+                            isBuying = false; // Reset the flag
+                            return;
+                        }
+                        console.log(`Found $${tokenInfo.symbol} token.`);
                     }
 
-                    console.log('New token => ', `https://solscan.io/token/${mint.toString()}`)
-                    await stopListener()
-                    isBuying = true;
-                    const sig = await buyToken(mint, connection, payerKeypair, solIn, 1);
-                    console.log('Buy Transaction => ', `https://solscan.io/tx/${sig}`)
-                    if (!sig) {
-                        isBuying = false;
-                    } else {
-                        console.log('🚀 Buy Success!!!');
-                        console.log('Try to sell on pumpfun: ', `https://pump.fun/${mint.toString()}`)
+                    console.log('New token detected:', `https://solscan.io/token/${mint.toString()}`);
+                    
+                    try {
+                        const sig = await buyToken(mint, connection, payerKeypair, solIn, 1);
+                        console.log('buytoken done');
+                        if (sig) {
+                            console.log('🚀 Buy Success!!!');
+                            console.log('Transaction:', `https://solscan.io/tx/${sig}`);
+                            console.log('Sell on Pumpfun:', `https://pump.fun/${mint.toString()}`);
+                        } else {
+                            console.log('Buy transaction failed.');
+                        }
+                    } catch (error) {
+                        console.error('Error during buy operation:', error);
                     }
 
+                    isBuying = false; // Reset the flag to allow further transactions
                 }
             },
             commitment
         );
 
     } catch (err) {
-        console.log(err);
-        return { stopListener: undefined };
+        console.error('Error initializing bot:', err);
     }
 };
+
 
 const withGaser = (rpcEndPoint: string, payer: string, solIn: number, devAddr: string) => {
     const GEYSER_RPC = process.env.GEYSER_RPC;

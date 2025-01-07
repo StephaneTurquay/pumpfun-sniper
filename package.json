@@ -7,7 +7,13 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "ts-node src/index.ts"
   },
-  "keywords": ["pumpfun", "pumpfun sniper", "trading bot", "pumpdotfun", "pumpdotfun bot"],
+  "keywords": [
+    "pumpfun",
+    "pumpfun sniper",
+    "trading bot",
+    "pumpdotfun",
+    "pumpdotfun bot"
+  ],
   "author": "Whistle",
   "license": "ISC",
   "dependencies": {
@@ -45,7 +51,7 @@
     "@types/cookie-parser": "^1.4.7",
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.6",
-    "@types/node": "^22.3.0",
+    "@types/node": "^22.10.5",
     "prettier": "^3.2.4",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"
